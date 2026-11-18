@@ -4,6 +4,7 @@ import { estimateInBackground, isPixelThumb } from '../recipes';
 import { deleteRecipe, patchRecipe, useData } from '../store';
 import type { Ingredient } from '../types';
 import { Icon, Sparkle, go, toast } from '../ui';
+import AskAnyAI from './AskAnyAI';
 import ThumbSheet from './ThumbSheet';
 
 export default function RecipeView({ id }: { id: string }) {
@@ -199,17 +200,22 @@ export default function RecipeView({ id }: { id: string }) {
     }
     if (!settings.apiKey) {
       return (
-        <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-          <a href="#/settings">Add your Gemini key</a> to see calories, protein and fiber, and to find this recipe by them.
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p className="muted" style={{ margin: 0, fontSize: 14 }}>
+            <a href="#/settings">Add your Gemini key</a> to estimate calories, protein and fiber automatically.
+          </p>
+          <AskAnyAI recipe={r} />
+        </div>
       );
     }
+    const failed = r.nutritionStatus === 'error';
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {r.nutritionStatus === 'error' && r.nutritionError && <div className="error-box">{r.nutritionError}</div>}
+        {failed && r.nutritionError && <div className="error-box">{r.nutritionError}</div>}
         <button className="btn btn-dark" onClick={() => void estimateInBackground(r.id)}>
-          <Sparkle size={14} /> Estimate calories, protein &amp; fiber
+          <Sparkle size={14} /> {failed ? 'Try Gemini again' : 'Estimate calories, protein & fiber'}
         </button>
+        {failed && <AskAnyAI recipe={r} />}
       </div>
     );
   }
