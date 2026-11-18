@@ -1,0 +1,16 @@
+{
+  "name": "Cauldron & Quill",
+  "short_name": "Cauldron",
+  "description": "A cozy recipe book with pixel-art thumbnails.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#2B1712",
+  "theme_color": "#2B1712",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

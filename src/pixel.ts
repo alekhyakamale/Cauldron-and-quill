@@ -1,0 +1,171 @@
+import type { PixelSize } from './types';
+
+export const GRID: Record<PixelSize, [number, number]> = {
+  Chunky: [32, 24],
+  Classic: [48, 36],
+  Fine: [64, 48],
+};
+
+export function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Couldn't open that image."));
+    img.src = src;
+  });
+}
+
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("Couldn't read that file."));
+    r.readAsDataURL(file);
+  });
+}
+
+function cropBox(w: number, h: number, ratio: number) {
+  if (w / h > ratio) {
+    const sw = h * ratio;
+    return { sx: (w - sw) / 2, sy: 0, sw, sh: h };
+  }
+  const sh = w / ratio;
+  return { sx: 0, sy: (h - sh) / 2, sw: w, sh };
+}
+
+/** Median-cut colour reduction so the result reads as real pixel art */
+function quantize(img: ImageData, colours: number): void {
+  const px: number[][] = [];
+  for (let i = 0; i < img.data.length; i += 4) px.push([img.data[i], img.data[i + 1], img.data[i + 2]]);
+  let boxes: number[][][] = [px];
+  while (boxes.length < colours) {
+    let bi = -1;
+    let bestRange = -1;
+    let bestCh = 0;
+    boxes.forEach((b, i) => {
+      if (b.length < 2) return;
+      for (let c = 0; c < 3; c++) {
+        let lo = 255;
+        let hi = 0;
+        for (const p of b) {
+          if (p[c] < lo) lo = p[c];
+          if (p[c] > hi) hi = p[c];
+        }
+        if (hi - lo > bestRange) {
+          bestRange = hi - lo;
+          bi = i;
+          bestCh = c;
+        }
+      }
+    });
+    if (bi < 0 || bestRange <= 4) break;
+    const b = boxes[bi].slice().sort((a, z) => a[bestCh] - z[bestCh]);
+    const mid = b.length >> 1;
+    boxes = [...boxes.slice(0, bi), b.slice(0, mid), b.slice(mid), ...boxes.slice(bi + 1)];
+  }
+  const palette = boxes.map((b) => {
+    const s = [0, 0, 0];
+    for (const p of b) {
+      s[0] += p[0];
+      s[1] += p[1];
+      s[2] += p[2];
+    }
+    return s.map((v) => Math.round(v / b.length));
+  });
+  for (let i = 0; i < img.data.length; i += 4) {
+    let best = palette[0];
+    let bd = Infinity;
+    for (const c of palette) {
+      const d = (img.data[i] - c[0]) ** 2 * 0.3 + (img.data[i + 1] - c[1]) ** 2 * 0.59 + (img.data[i + 2] - c[2]) ** 2 * 0.11;
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    img.data[i] = best[0];
+    img.data[i + 1] = best[1];
+    img.data[i + 2] = best[2];
+    img.data[i + 3] = 255;
+  }
+}
+
+/** Turns any picture into a tiny 4:3 pixel-art PNG (a few KB, so it fits easily in local storage). */
+export async function pixelate(src: string, size: PixelSize, colours = 24): Promise<string> {
+  const img = await loadImage(src);
+  const [w, h] = GRID[size];
+  const { sx, sy, sw, sh } = cropBox(img.naturalWidth, img.naturalHeight, 4 / 3);
+  // Step down gradually so each pixel is a true average of the area it covers
+  let canvas = document.createElement('canvas');
+  let cw = Math.min(Math.round(sw), w * 8);
+  let ch = Math.round(cw * 0.75);
+  canvas.width = cw;
+  canvas.height = ch;
+  let ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+  while (cw / 2 >= w) {
+    const next = document.createElement('canvas');
+    next.width = Math.max(w, Math.round(cw / 2));
+    next.height = Math.max(h, Math.round(ch / 2));
+    const nctx = next.getContext('2d')!;
+    nctx.imageSmoothingEnabled = true;
+    nctx.imageSmoothingQuality = 'high';
+    nctx.drawImage(canvas, 0, 0, next.width, next.height);
+    canvas = next;
+    ctx = nctx;
+    cw = next.width;
+    ch = next.height;
+  }
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const octx = out.getContext('2d')!;
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+  octx.drawImage(canvas, 0, 0, w, h);
+  const data = octx.getImageData(0, 0, w, h);
+  quantize(data, colours);
+  octx.putImageData(data, 0, 0);
+  return out.toDataURL('image/png');
+}
+
+/** Crops a photo to 4:3 and shrinks it to a JPEG small enough to store. */
+export async function shrinkPhoto(src: string, maxW = 560, quality = 0.78): Promise<string> {
+  const img = await loadImage(src);
+  const { sx, sy, sw, sh } = cropBox(img.naturalWidth, img.naturalHeight, 4 / 3);
+  const w = Math.min(maxW, Math.round(sw));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = Math.round(w * 0.75);
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', quality);
+}
+
+/** Keeps the whole photo (no crop) but limits its size before sending it to Gemini. */
+export async function prepareForUpload(src: string, maxSide = 1600): Promise<string> {
+  const img = await loadImage(src);
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * scale);
+  c.height = Math.round(img.naturalHeight * scale);
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+
+
+/** Scales a small pixel thumbnail up (crisp, nearest-neighbour) so Gemini can see its style clearly. */
+export async function referenceImage(src: string, width = 384): Promise<string> {
+  const img = await loadImage(src);
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = Math.round((width * img.naturalHeight) / img.naturalWidth);
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/png');
+}
