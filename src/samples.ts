@@ -18,7 +18,7 @@ interface SampleInput {
 const SAMPLES: SampleInput[] = [
   {
     id: 'sample-summer-rolls', title: 'Summer Rolls', timeText: '30 min', serves: 4, meal: 'Light bites', cuisine: 'Vietnamese',
-    thumb: '/samples/summer-rolls.png', nutrition: { kcal: 330, protein: 17, carbs: 40, fat: 12 }, cookedDaysAgo: 3,
+    thumb: '/samples/summer-rolls.png', nutrition: { kcal: 330, protein: 17, carbs: 40, fat: 12, fiber: 3 }, cookedDaysAgo: 3,
     ingredients: `For the rolls:
 12 rice paper wrappers
 100 g rice vermicelli
@@ -40,7 +40,7 @@ Fold in the sides and roll up tightly. Keep finished rolls under a damp cloth wh
   },
   {
     id: 'sample-stew', title: 'Mushroom & Barley Stew', timeText: '1 h 20 min', serves: 4, meal: 'Soups & stews', cuisine: 'European',
-    thumb: '/samples/stew.png', nutrition: { kcal: 250, protein: 8, carbs: 38, fat: 7 }, cookedDaysAgo: 15,
+    thumb: '/samples/stew.png', nutrition: { kcal: 250, protein: 8, carbs: 38, fat: 7, fiber: 8 }, cookedDaysAgo: 15,
     ingredients: `2 tbsp olive oil
 1 onion, diced
 2 carrots, diced
@@ -58,7 +58,7 @@ Season, fish out the thyme stalks and serve.`,
   },
   {
     id: 'sample-chai', title: 'Masala Chai', timeText: '15 min', serves: 2, meal: 'Drinks', cuisine: 'Indian',
-    thumb: '/samples/chai.png', nutrition: { kcal: 95, protein: 4, carbs: 12, fat: 4 }, cookedDaysAgo: 0,
+    thumb: '/samples/chai.png', nutrition: { kcal: 95, protein: 4, carbs: 12, fat: 4, fiber: 0 }, cookedDaysAgo: 0,
     ingredients: `1 cup water
 1 cup milk
 2 tsp black tea leaves
@@ -72,7 +72,7 @@ Strain into cups.`,
   },
   {
     id: 'sample-loaf', title: 'Honey Oat Loaf', timeText: '2 h 30 min', serves: 12, meal: 'Bakes', cuisine: 'British',
-    thumb: '/samples/loaf.png', nutrition: { kcal: 205, protein: 6, carbs: 40, fat: 3 }, cookedDaysAgo: 40,
+    thumb: '/samples/loaf.png', nutrition: { kcal: 205, protein: 6, carbs: 40, fat: 3, fiber: 3 }, cookedDaysAgo: 40,
     ingredients: `500 g strong white flour
 75 g rolled oats, plus extra for the top
 7 g fast-action yeast
@@ -88,7 +88,7 @@ Bake at 200°C for 30 min, until it sounds hollow when tapped underneath.`,
   },
   {
     id: 'sample-paneer', title: 'Paneer Tikka', timeText: '40 min', serves: 2, meal: 'Mains', cuisine: 'Indian',
-    thumb: '/samples/paneer.png', nutrition: { kcal: 470, protein: 25, carbs: 14, fat: 35 }, cookedDaysAgo: 1,
+    thumb: '/samples/paneer.png', nutrition: { kcal: 470, protein: 25, carbs: 14, fat: 35, fiber: 2 }, cookedDaysAgo: 1,
     ingredients: `For the marinade:
 150 g thick yogurt
 1 tbsp ginger-garlic paste
@@ -108,7 +108,7 @@ Grill for 10 min, turning halfway, until charred at the edges.`,
   },
   {
     id: 'sample-crumble', title: 'Blackberry Crumble', timeText: '55 min', serves: 6, meal: 'Desserts', cuisine: 'British',
-    thumb: '/samples/crumble.png', nutrition: { kcal: 400, protein: 5, carbs: 62, fat: 14 }, cookedDaysAgo: null,
+    thumb: '/samples/crumble.png', nutrition: { kcal: 400, protein: 5, carbs: 62, fat: 14, fiber: 7 }, cookedDaysAgo: null,
     ingredients: `500 g blackberries
 2 apples, peeled and chopped
 3 tbsp sugar
@@ -123,7 +123,7 @@ Rest for 10 min before serving.`,
   },
   {
     id: 'sample-lemon-rice', title: 'Lemon Rice', timeText: '25 min', serves: 3, meal: 'Mains', cuisine: 'Indian',
-    thumb: null, nutrition: { kcal: 355, protein: 7, carbs: 55, fat: 12 }, cookedDaysAgo: null,
+    thumb: null, nutrition: { kcal: 355, protein: 7, carbs: 55, fat: 12, fiber: 2 }, cookedDaysAgo: null,
     ingredients: `1 cup rice, cooked and cooled
 2 tbsp oil
 1 tsp mustard seeds

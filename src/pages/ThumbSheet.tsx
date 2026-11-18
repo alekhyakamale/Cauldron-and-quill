@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { conjureThumbnail, describeThumbPrompt, GeminiError } from '../gemini';
 import { parseIngredients } from '../parse';
-import { fileToDataUrl, pixelate, referenceImage, shrinkPhoto } from '../pixel';
+import { cropBox, fileToDataUrl, loadImage, NO_CROP, pixelate, prepareForUpload, referenceImage, shrinkPhoto, type Crop } from '../pixel';
 import { isPixelThumb } from '../recipes';
 import { useData } from '../store';
 import type { PixelSize, Recipe } from '../types';
@@ -28,8 +28,10 @@ export default function ThumbSheet({ recipe, onClose, onPick }: Props) {
   const [brews, setBrews] = useState<string[]>([]);
   const [pick, setPick] = useState(0);
   const [pixelateUpload, setPixelateUpload] = useState(settings.pixelateUploads);
-  const [original, setOriginal] = useState<string | null>(null);
+  const [source, setSource] = useState<HTMLImageElement | null>(null);
+  const [crop, setCrop] = useState<Crop>(NO_CROP);
   const [preview, setPreview] = useState<string | null>(null);
+  const drag = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const abort = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -81,25 +83,57 @@ export default function ThumbSheet({ recipe, onClose, onPick }: Props) {
     setPhase(brews.length ? 'result' : 'setup');
   };
 
-  const processUpload = async (src: string, pix: boolean, s: PixelSize) => {
-    setPreview(null);
-    try {
-      setPreview(pix ? await pixelate(src, s) : await shrinkPhoto(src));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
+  // Re-render the preview whenever the crop, pixel size or pixelate setting changes
+  useEffect(() => {
+    if (!source || mode !== 'upload') return;
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      (pixelateUpload ? pixelate(source, size, crop) : shrinkPhoto(source, crop))
+        .then((out) => !cancelled && setPreview(out))
+        .catch((e) => !cancelled && setError((e as Error).message));
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [source, crop, size, pixelateUpload, mode]);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     setError('');
     try {
-      const src = await fileToDataUrl(file);
-      setOriginal(src);
-      await processUpload(src, pixelateUpload, size);
+      // Work from a 1400px copy so live cropping stays smooth on a phone
+      const img = await loadImage(await prepareForUpload(await fileToDataUrl(file), 1400));
+      setCrop(NO_CROP);
+      setSource(img);
     } catch (e) {
       setError((e as Error).message);
     }
+  };
+
+  const startDrag = (e: PointerEvent<HTMLDivElement>) => {
+    if (!source) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const w = source.naturalWidth;
+    const h = source.naturalHeight;
+    const b = cropBox(w, h, 4 / 3, crop);
+    drag.current = { x: e.clientX, y: e.clientY, cx: (b.sx + b.sw / 2) / w, cy: (b.sy + b.sh / 2) / h };
+  };
+  const moveDrag = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || !source) return;
+    const w = source.naturalWidth;
+    const h = source.naturalHeight;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const b = cropBox(w, h, 4 / 3, crop);
+    const hw = b.sw / 2 / w;
+    const hh = b.sh / 2 / h;
+    const cx = d.cx - ((e.clientX - d.x) / rect.width) * (b.sw / w);
+    const cy = d.cy - ((e.clientY - d.y) / rect.height) * (b.sh / h);
+    setCrop((c) => ({ ...c, cx: Math.min(Math.max(cx, hw), 1 - hw), cy: Math.min(Math.max(cy, hh), 1 - hh) }));
+  };
+  const endDrag = () => {
+    drag.current = null;
   };
 
   return (
@@ -156,10 +190,7 @@ export default function ThumbSheet({ recipe, onClose, onPick }: Props) {
 
           {mode === 'upload' && (
             <label className="check-row">
-              <input type="checkbox" checked={pixelateUpload} onChange={(e) => {
-                setPixelateUpload(e.target.checked);
-                if (original) void processUpload(original, e.target.checked, size);
-              }} />
+              <input type="checkbox" checked={pixelateUpload} onChange={(e) => setPixelateUpload(e.target.checked)} />
               <span><strong>Pixelate my photo</strong><span>So it matches the rest of your shelf</span></span>
             </label>
           )}
@@ -167,10 +198,7 @@ export default function ThumbSheet({ recipe, onClose, onPick }: Props) {
           {(mode === 'conjure' || pixelateUpload) && (
             <div className="field">
               <span className="label">Pixel size</span>
-              <Seg label="Pixel size" options={SIZES} value={size} onChange={(s) => {
-                setSize(s);
-                if (mode === 'upload' && original && pixelateUpload) void processUpload(original, true, s);
-              }} />
+              <Seg label="Pixel size" options={SIZES} value={size} onChange={setSize} />
             </div>
           )}
 
@@ -208,7 +236,27 @@ export default function ThumbSheet({ recipe, onClose, onPick }: Props) {
             <>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} />
               {preview && (
-                <img className={'thumb' + (pixelateUpload ? ' pixelated' : '')} src={preview} alt="Preview of your thumbnail" style={{ border: '3px solid var(--shadow)', boxShadow: '5px 5px 0 var(--ink)' }} />
+                <div className="field">
+                  <div
+                    onPointerDown={startDrag}
+                    onPointerMove={moveDrag}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                    style={{ touchAction: 'none', cursor: 'grab', userSelect: 'none' }}
+                  >
+                    <img className={'thumb' + (pixelateUpload ? ' pixelated' : '')} src={preview} alt="Preview of your thumbnail" draggable={false}
+                      style={{ border: '3px solid var(--shadow)', boxShadow: '5px 5px 0 var(--ink)', pointerEvents: 'none' }} />
+                  </div>
+                  <label className="field" style={{ marginTop: 10 }}>
+                    <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span className="label">Zoom in on the dish</span>
+                      <span className="muted" style={{ fontSize: 12, fontWeight: 700 }}>Drag the picture to move it</span>
+                    </span>
+                    <input type="range" min={1} max={4} step={0.05} value={crop.zoom}
+                      onChange={(e) => setCrop((c) => ({ ...c, zoom: Number(e.target.value) }))}
+                      style={{ width: '100%', minHeight: 44, accentColor: 'var(--label)' }} />
+                  </label>
+                </div>
               )}
               {error && <div className="error-box" role="alert">{error}</div>}
               {preview ? (

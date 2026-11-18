@@ -175,26 +175,32 @@ export default function RecipeView({ id }: { id: string }) {
           <div className="nutri">
             <div><b>{n.kcal}</b><span>KCAL</span></div>
             <div><b>{n.protein} g</b><span>PROTEIN</span></div>
+            <div><b>{n.fiber ?? '–'}{n.fiber !== undefined && ' g'}</b><span>FIBER</span></div>
             <div><b>{n.carbs} g</b><span>CARBS</span></div>
             <div><b>{n.fat} g</b><span>FAT</span></div>
           </div>
           <span className="muted" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <Sparkle size={11} /> Per serving · estimated by Gemini from your ingredients
+            <Sparkle size={11} /> Per person · estimated by Gemini from your ingredients
           </span>
+          {n.fiber === undefined && settings.apiKey && (
+            <button className="btn btn-dark" disabled={r.nutritionStatus === 'pending'} onClick={() => void estimateInBackground(r.id)}>
+              <Sparkle size={14} /> {r.nutritionStatus === 'pending' ? 'Estimating…' : 'Add fiber estimate'}
+            </button>
+          )}
         </div>
       );
     }
     if (r.nutritionStatus === 'pending') {
       return (
         <div className="muted" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 700 }}>
-          <span className="blink"><Sparkle size={14} /></span> Gemini is estimating calories and protein…
+          <span className="blink"><Sparkle size={14} /></span> Gemini is estimating calories, protein and fiber…
         </div>
       );
     }
     if (!settings.apiKey) {
       return (
         <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-          <a href="#/settings">Add your Gemini key</a> to see calories and protein, and to find this recipe by them.
+          <a href="#/settings">Add your Gemini key</a> to see calories, protein and fiber, and to find this recipe by them.
         </p>
       );
     }
@@ -202,7 +208,7 @@ export default function RecipeView({ id }: { id: string }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {r.nutritionStatus === 'error' && r.nutritionError && <div className="error-box">{r.nutritionError}</div>}
         <button className="btn btn-dark" onClick={() => void estimateInBackground(r.id)}>
-          <Sparkle size={14} /> Estimate calories &amp; protein
+          <Sparkle size={14} /> Estimate calories, protein &amp; fiber
         </button>
       </div>
     );

@@ -1,10 +1,18 @@
 import type { PixelSize } from './types';
 
 export const GRID: Record<PixelSize, [number, number]> = {
-  Chunky: [32, 24],
-  Classic: [48, 36],
-  Fine: [64, 48],
+  Chunky: [48, 36],
+  Classic: [96, 72],
+  Fine: [160, 120],
 };
+
+/** Which part of the picture to keep: zoom 1 = the largest 4:3 area, cx/cy = centre as a fraction of the image */
+export interface Crop {
+  zoom: number;
+  cx: number;
+  cy: number;
+}
+export const NO_CROP: Crop = { zoom: 1, cx: 0.5, cy: 0.5 };
 
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -24,13 +32,26 @@ export function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-function cropBox(w: number, h: number, ratio: number) {
-  if (w / h > ratio) {
-    const sw = h * ratio;
-    return { sx: (w - sw) / 2, sy: 0, sw, sh: h };
+export function cropBox(w: number, h: number, ratio: number, crop: Crop = NO_CROP) {
+  let sw = w / h > ratio ? h * ratio : w;
+  let sh = sw / ratio;
+  sw /= crop.zoom;
+  sh /= crop.zoom;
+  const sx = Math.min(Math.max(crop.cx * w - sw / 2, 0), w - sw);
+  const sy = Math.min(Math.max(crop.cy * h - sh / 2, 0), h - sh);
+  return { sx, sy, sw, sh };
+}
+
+/** A little extra saturation and contrast so small pixel art doesn't turn muddy */
+function punch(img: ImageData, sat = 1.18, con = 1.08): void {
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    for (let c = 0; c < 3; c++) {
+      const v = (l + (d[i + c] - l) * sat - 128) * con + 128;
+      d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+    }
   }
-  const sh = w / ratio;
-  return { sx: 0, sy: (h - sh) / 2, sw: w, sh };
 }
 
 /** Median-cut colour reduction so the result reads as real pixel art */
@@ -89,14 +110,14 @@ function quantize(img: ImageData, colours: number): void {
   }
 }
 
-/** Turns any picture into a tiny 4:3 pixel-art PNG (a few KB, so it fits easily in local storage). */
-export async function pixelate(src: string, size: PixelSize, colours = 24): Promise<string> {
-  const img = await loadImage(src);
+/** Turns any picture into a small 4:3 pixel-art PNG (a few KB, so it fits easily in local storage). */
+export async function pixelate(src: string | HTMLImageElement, size: PixelSize, crop: Crop = NO_CROP, colours = 32): Promise<string> {
+  const img = typeof src === 'string' ? await loadImage(src) : src;
   const [w, h] = GRID[size];
-  const { sx, sy, sw, sh } = cropBox(img.naturalWidth, img.naturalHeight, 4 / 3);
+  const { sx, sy, sw, sh } = cropBox(img.naturalWidth, img.naturalHeight, 4 / 3, crop);
   // Step down gradually so each pixel is a true average of the area it covers
   let canvas = document.createElement('canvas');
-  let cw = Math.min(Math.round(sw), w * 8);
+  let cw = Math.max(w, Math.min(Math.round(sw), w * 8));
   let ch = Math.round(cw * 0.75);
   canvas.width = cw;
   canvas.height = ch;
@@ -125,15 +146,16 @@ export async function pixelate(src: string, size: PixelSize, colours = 24): Prom
   octx.imageSmoothingQuality = 'high';
   octx.drawImage(canvas, 0, 0, w, h);
   const data = octx.getImageData(0, 0, w, h);
+  punch(data);
   quantize(data, colours);
   octx.putImageData(data, 0, 0);
   return out.toDataURL('image/png');
 }
 
 /** Crops a photo to 4:3 and shrinks it to a JPEG small enough to store. */
-export async function shrinkPhoto(src: string, maxW = 560, quality = 0.78): Promise<string> {
-  const img = await loadImage(src);
-  const { sx, sy, sw, sh } = cropBox(img.naturalWidth, img.naturalHeight, 4 / 3);
+export async function shrinkPhoto(src: string | HTMLImageElement, crop: Crop = NO_CROP, maxW = 560, quality = 0.78): Promise<string> {
+  const img = typeof src === 'string' ? await loadImage(src) : src;
+  const { sx, sy, sw, sh } = cropBox(img.naturalWidth, img.naturalHeight, 4 / 3, crop);
   const w = Math.min(maxW, Math.round(sw));
   const c = document.createElement('canvas');
   c.width = w;

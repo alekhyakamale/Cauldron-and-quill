@@ -21,6 +21,8 @@ export interface Nutrition {
   protein: number;
   carbs: number;
   fat: number;
+  /** Dietary fibre in grams; missing on recipes estimated before fibre was added */
+  fiber?: number;
 }
 
 export type NutritionStatus = 'none' | 'pending' | 'done' | 'error';

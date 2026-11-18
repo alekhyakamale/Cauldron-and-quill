@@ -134,7 +134,7 @@ export default function Settings() {
           </div>
         </label>
         <span className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
-          Used to conjure thumbnails, read recipe cards and estimate calories and protein. The key stays on this phone and is only sent to Google when you use those features.
+          Used to conjure thumbnails, read recipe cards and estimate calories, protein and fiber. The key stays on this phone and is only sent to Google when you use those features.
         </span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-ink" disabled={!settings.apiKey || keyStatus.kind === 'testing'} onClick={test}>

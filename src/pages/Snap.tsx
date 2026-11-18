@@ -108,6 +108,7 @@ export default function Snap() {
             protein: Math.round(Number(reading.nutrition.protein)),
             carbs: Math.round(Number(reading.nutrition.carbs)),
             fat: Math.round(Number(reading.nutrition.fat)),
+            fiber: Math.round(Number(reading.nutrition.fiber) * 2) / 2,
           }
         : null,
     );
@@ -208,7 +209,7 @@ export default function Snap() {
           {reading?.nutrition && (
             <span className="hint divider" style={{ fontSize: 14, fontWeight: 600 }}>
               <span style={{ marginTop: 4 }}><Sparkle size={12} color="var(--label)" /></span>
-              About {Math.round(reading.nutrition.kcal / 5) * 5} kcal and {Math.round(reading.nutrition.protein)} g protein per serving (estimated).
+              About {Math.round(reading.nutrition.kcal / 5) * 5} kcal, {Math.round(reading.nutrition.protein)} g protein and {Math.round(Number(reading.nutrition.fiber) * 2) / 2} g fiber per serving (estimated).
             </span>
           )}
         </section>

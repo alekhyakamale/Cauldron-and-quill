@@ -1,5 +1,5 @@
 // Cauldron & Quill service worker: makes the app open offline after the first visit.
-const CACHE = 'cq-v1';
+const CACHE = 'cq-v2';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/cauldron.png', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

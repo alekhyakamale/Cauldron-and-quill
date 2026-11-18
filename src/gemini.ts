@@ -18,7 +18,37 @@ interface Part {
   inline_data?: { mime_type: string; data: string };
 }
 
-async function generate(settings: Settings, model: string, body: unknown, signal?: AbortSignal): Promise<Part[]> {
+const FALLBACK_TEXT_MODEL = 'gemini-flash-lite-latest';
+const FALLBACK_IMAGE_MODEL = 'gemini-3.1-flash-lite-image';
+const BUSY = new Set([500, 502, 503, 504]);
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(t);
+      reject(new DOMException('Aborted', 'AbortError'));
+    });
+  });
+}
+
+/** Retries when Gemini is overloaded, then tries a lighter model before giving up. */
+async function generate(settings: Settings, model: string, body: unknown, signal?: AbortSignal, fallback?: string): Promise<Part[]> {
+  const models = fallback && fallback !== model.trim() ? [model, fallback] : [model];
+  for (const m of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await generateOnce(settings, m, body, signal);
+      } catch (e) {
+        if (!(e instanceof GeminiError) || !BUSY.has(e.status)) throw e;
+        if (attempt < 2) await wait(attempt === 0 ? 1500 : 4000, signal);
+      }
+    }
+  }
+  throw new GeminiError('Gemini is overloaded right now. This usually clears up within a few minutes, so try again shortly.', 503);
+}
+
+async function generateOnce(settings: Settings, model: string, body: unknown, signal?: AbortSignal): Promise<Part[]> {
   if (!settings.apiKey.trim()) throw new GeminiError('Add your Gemini API key in Settings first.');
   let res: Response;
   try {
@@ -38,7 +68,21 @@ async function generate(settings: Settings, model: string, body: unknown, signal
     if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Gemini rejected the API key. Check it in Settings.', 400);
     if (res.status === 403) throw new GeminiError('This API key is not allowed to use Gemini. Check it in Settings.', 403);
     if (res.status === 404) throw new GeminiError(`Gemini doesn't know the model "${model}". You can change it under Settings › Advanced.`, 404);
-    if (res.status === 429) throw new GeminiError('Gemini says you have hit your usage limit. Try again in a little while.', 429);
+    if (res.status === 429) {
+      // "limit: 0" means this model has no free quota at all (image models on free keys)
+      if (/limit:\s*0\b/.test(msg) || (/free_tier/i.test(msg) && /image/i.test(model))) {
+        throw new GeminiError(
+          /image/i.test(model)
+            ? "Gemini's free tier doesn't include image generation. Turn on billing for your key in Google AI Studio, or upload a photo instead."
+            : `Your key has no free quota for "${model}". Turn on billing in Google AI Studio, or pick another model under Settings › Advanced.`,
+          429,
+        );
+      }
+      if (/per\s*day|PerDay|RPD/i.test(msg)) {
+        throw new GeminiError("You've used today's free Gemini allowance. It resets at midnight US Pacific time (1:30 PM in India).", 429);
+      }
+      throw new GeminiError('Gemini is getting too many requests right now. Wait a minute and try again.', 429);
+    }
     throw new GeminiError(msg, res.status);
   }
   const cand = json?.candidates?.[0];
@@ -78,6 +122,7 @@ async function generateJSON<T>(settings: Settings, parts: Part[], schema: unknow
       generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.2 },
     },
     signal,
+    FALLBACK_TEXT_MODEL,
   );
   return parseJSON<T>(partsText(out));
 }
@@ -89,8 +134,9 @@ const NUTRITION_SCHEMA = {
     protein: { type: 'NUMBER' },
     carbs: { type: 'NUMBER' },
     fat: { type: 'NUMBER' },
+    fiber: { type: 'NUMBER' },
   },
-  required: ['kcal', 'protein', 'carbs', 'fat'],
+  required: ['kcal', 'protein', 'carbs', 'fat', 'fiber'],
 };
 
 export interface Analysis {
@@ -105,7 +151,7 @@ export async function analyzeRecipe(
   r: { title: string; serves: number; ingredientsText: string; methodText: string },
 ): Promise<Analysis> {
   const prompt = [
-    'You are a careful nutritionist. Estimate the nutrition PER SERVING for this home recipe.',
+    'You are a careful nutritionist. Estimate the nutrition PER SERVING (per person) for this home recipe: calories, protein, carbohydrate, fat and dietary fiber.',
     'Use typical values for the ingredients as written; assume reasonable amounts where vague (e.g. "a handful").',
     `Also name the single most fitting cuisine (one or two words, like "Indian", "Vietnamese", "Italian", "British") and the meal type, one of: ${MEALS.join(', ')}.`,
     'Round kcal to the nearest 5 and grams to whole numbers.',
@@ -133,6 +179,7 @@ export async function analyzeRecipe(
       protein: Math.round(Number(n.protein)),
       carbs: Math.round(Number(n.carbs)),
       fat: Math.round(Number(n.fat)),
+      fiber: Math.round(Number(n.fiber) * 2) / 2,
     },
     cuisine: (res.cuisine || '').trim(),
     meal: (MEALS as readonly string[]).includes(res.meal) ? (res.meal as Meal) : 'Mains',
@@ -171,7 +218,7 @@ export async function readRecipeCard(settings: Settings, imageDataUrl: string, s
     '- timeText is the total time like "35 min" or "1 h 20 min"; estimate it from the steps if not written.',
     '- If the number of servings is not written, estimate it.',
     `- meal is one of: ${MEALS.join(', ')}. cuisine is one or two words.`,
-    '- nutrition is your best per-serving estimate.',
+    '- nutrition is your best per-serving (per person) estimate, including dietary fiber in grams.',
     'If the photo does not contain a recipe, return an empty title and empty lists.',
   ].join('\n');
   const res = await generateJSON<CardReading>(
@@ -220,7 +267,7 @@ export async function readRecipeCard(settings: Settings, imageDataUrl: string, s
 }
 
 const SIZE_WORDS: Record<PixelSize, string> = {
-  Chunky: 'big, chunky 32×24-style pixels',
+  Chunky: 'big, chunky pixels',
   Classic: 'classic 16-bit pixels',
   Fine: 'fine, detailed pixels',
 };
@@ -239,7 +286,7 @@ export function describeThumbPrompt(p: ThumbPromptInput): string {
   const withIngr = p.keyIngredients.length ? ` with ${listJoin(p.keyIngredients.slice(0, 5))}` : '';
   const whisper = p.whisper.trim() ? `, ${p.whisper.trim()}` : '';
   const style = p.matchStyle ? ', matching the style of your shelf' : '';
-  return `${dish}${withIngr}${whisper}, as cozy candlelit pixel art with ${SIZE_WORDS[p.size].replace(/ 32×24-style/, '')}${style}.`;
+  return `${dish}${withIngr}${whisper}, as cozy candlelit pixel art with ${SIZE_WORDS[p.size]}${style}.`;
 }
 
 function listJoin(xs: string[]): string {
@@ -273,6 +320,7 @@ export async function conjureThumbnail(
       generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: '4:3' } },
     },
     signal,
+    FALLBACK_IMAGE_MODEL,
   );
   const images = out.filter((pt) => !pt.thought && (pt.inlineData || pt.inline_data));
   const last = images[images.length - 1];

@@ -204,13 +204,13 @@ textarea.input { line-height: 1.5; resize: vertical; }
 }
 
 /* Recipe page */
-.nutri { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.nutri { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .nutri div {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 2px; min-width: 0;
   background: var(--raised); border: 2px solid var(--edge);
 }
-.nutri b { font-family: var(--font-display); font-weight: 600; font-variation-settings: 'SOFT' 100, 'WONK' 0; font-size: 21px; color: var(--text); }
-.nutri span { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--text-muted); }
+.nutri b { font-family: var(--font-display); font-weight: 600; font-variation-settings: 'SOFT' 100, 'WONK' 0; font-size: 19px; color: var(--text); white-space: nowrap; }
+.nutri span { font-size: 10px; font-weight: 800; letter-spacing: 0.5px; color: var(--text-muted); }
 .ing {
   display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 11px 0;
   border-bottom: 1px dashed var(--rule); cursor: pointer; font-size: 17px; line-height: 1.35;

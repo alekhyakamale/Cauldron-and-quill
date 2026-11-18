@@ -165,8 +165,8 @@ export default function Editor({ id }: { id?: string }) {
         <span className="hint divider" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>
           <span style={{ marginTop: 4 }}><Sparkle size={12} color="var(--label)" /></span>
           {settings.apiKey
-            ? 'When you save, Gemini estimates calories and protein per serving, so this recipe shows up in your filters.'
-            : 'Add your Gemini key in Settings to get calorie and protein estimates for your filters.'}
+            ? 'When you save, Gemini estimates calories, protein and fiber per person, so this recipe shows up in your filters.'
+            : 'Add your Gemini key in Settings to get calorie, protein and fiber estimates.'}
         </span>
       </form>
 
