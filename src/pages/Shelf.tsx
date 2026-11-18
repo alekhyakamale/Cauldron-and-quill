@@ -3,6 +3,7 @@ import { lastCookedLabel } from '../parse';
 import { isHot, isPixelThumb } from '../recipes';
 import { sampleRecipes } from '../samples';
 import { update, useData } from '../store';
+import { useSyncStatus } from '../sync';
 import type { Meal, Recipe } from '../types';
 import { MEALS } from '../types';
 import { Cauldron, Icon, Seg, Sheet, SheetHead, Sparkle, toast } from '../ui';
@@ -88,6 +89,7 @@ function cuisinesOf(recipes: Recipe[]): { name: string; count: number }[] {
 
 export default function Shelf() {
   const { recipes, settings } = useData();
+  const syncStatus = useSyncStatus();
   const saved = useMemo(() => {
     try {
       return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') as { f: Filters; q: string } | null;
@@ -146,6 +148,12 @@ export default function Shelf() {
           <Icon name="sliders" size={22} stroke={2} />
         </a>
       </header>
+
+      {settings.syncPassphrase && syncStatus.phase === 'error' && (
+        <a href="#/settings" className="error-box" style={{ textDecoration: 'none', fontSize: 14 }}>
+          Sync paused: {syncStatus.message} <span style={{ textDecoration: 'underline' }}>Settings</span>
+        </a>
+      )}
 
       {recipes.length > 0 && (
         <>

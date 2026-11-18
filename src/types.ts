@@ -48,6 +48,8 @@ export interface Recipe {
   updatedAt: number;
   lastCooked: number | null;
   sample?: boolean;
+  /** When this phone last changed the recipe; the newest change wins when syncing */
+  changedAt?: number;
 }
 
 export type Season = 'Autumn' | 'Winter' | 'Spring' | 'Summer';
@@ -65,6 +67,8 @@ export interface Settings {
   keepAwake: boolean;
   timerSound: boolean;
   showKcal: boolean;
+  /** Secret that unlocks /api/sync; empty means sync is off */
+  syncPassphrase: string;
 }
 
 export const DEFAULT_TEXT_MODEL = 'gemini-flash-latest';
@@ -82,4 +86,5 @@ export const DEFAULT_SETTINGS: Settings = {
   keepAwake: true,
   timerSound: true,
   showKcal: true,
+  syncPassphrase: '',
 };

@@ -6,6 +6,7 @@ import Settings from './pages/Settings';
 import Shelf from './pages/Shelf';
 import Snap from './pages/Snap';
 import { resumePendingEstimates } from './recipes';
+import { startAutoSync } from './sync';
 import { useData } from './store';
 import { activeSeason, applyPalette, PALETTES } from './theme';
 import { Toaster, useRoute } from './ui';
@@ -17,6 +18,7 @@ export default function App() {
 
   useEffect(() => applyPalette(PALETTES[season]), [season]);
   useEffect(() => resumePendingEstimates(), []);
+  useEffect(() => startAutoSync(), []);
 
   let page;
   switch (route[0]) {

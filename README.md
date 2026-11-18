@@ -44,9 +44,23 @@ On iPhone, the home-screen app and Safari keep separate storage, so add recipes 
 
 ## Where your data lives
 
-- Recipes, thumbnails and settings are saved in `localStorage` under `cauldron-and-quill/v1`, only on that phone and in that browser.
+- Recipes, thumbnails and settings are saved in `localStorage` under `cauldron-and-quill/v1`, on that phone and in that browser.
 - Clearing the browser's site data deletes everything. Use Settings › Your recipes › Export now and then to save a backup file, and Import to restore it (also how you move recipes to a new phone).
-- Your Gemini key is never included in exported backups.
+- Your Gemini key and sync passphrase are never included in exported backups.
+- With Sync on, every recipe is also kept in your Neon Postgres database (see below).
+
+## Sync with Neon
+
+One serverless function, `api/sync.ts`, stores recipes in a single `recipes` table, which it creates on first use. Phones keep working offline and sync when they open, a few seconds after each edit, and when they come back online. If two phones edit the same recipe, the most recent edit wins. Deleting a recipe deletes it everywhere.
+
+Setup, once:
+
+1. Vercel › your project › Storage › Create › Neon (free plan). This adds `DATABASE_URL` to the project. Or create a project at neon.com and add its connection string as `DATABASE_URL` yourself.
+2. Vercel › Settings › Environment Variables: add `APP_PASSPHRASE` with a long secret phrase, for Production.
+3. Redeploy (`npm run ship`).
+4. On each phone: Settings › Sync, type the passphrase, Connect. The first sync uploads that phone's shelf and downloads everything else.
+
+Neon's free plan scales to zero when idle and wakes on the next request (a second or so), so the project is never paused the way Supabase's free tier is.
 
 ## Gemini
 
@@ -57,7 +71,9 @@ On iPhone, the home-screen app and Safari keep separate storage, so add recipes 
 
 ## Code map
 
-- `src/store.ts`: local-storage store (`useSyncExternalStore`)
+- `src/store.ts`: local-storage store (`useSyncExternalStore`), tracks which recipes changed
+- `src/sync.ts`: phone side of sync (batching, merging, auto-sync)
+- `api/sync.ts`, `api/_lib.ts`: the sync endpoint and its Postgres queries
 - `src/parse.ts`: ingredient amounts, scaling, timers in steps
 - `src/gemini.ts`: Gemini REST calls (structured JSON + image generation), retries and fallbacks
 - `src/pixel.ts`: cropping, pixelation and colour quantisation on a canvas

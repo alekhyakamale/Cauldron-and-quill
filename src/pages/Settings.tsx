@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { GeminiError, testKey } from '../gemini';
 import { sampleRecipes } from '../samples';
 import { setSettings, storageBytes, update, useData } from '../store';
+import { connect, disconnect, syncNow, useSyncStatus } from '../sync';
 import { activeSeason, PALETTES } from '../theme';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_TEXT_MODEL, type PixelSize, type Recipe, type Season } from '../types';
 import { Icon, Seg, toast } from '../ui';
@@ -60,7 +61,7 @@ export default function Settings() {
       version: 1,
       exportedAt: new Date().toISOString(),
       recipes,
-      settings: { ...settings, apiKey: '' },
+      settings: { ...settings, apiKey: '', syncPassphrase: '' },
     };
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -178,9 +179,15 @@ export default function Settings() {
         <Toggle checked={settings.showKcal} onChange={(v) => safeSet({ showKcal: v })} title="Show calories on recipe cards" sub="Filters by calories and protein work either way" />
       </Section>
 
+      <Section title="Sync">
+        <SyncSettings />
+      </Section>
+
       <Section title="Your recipes">
         <span className="muted" style={{ marginTop: -6, fontSize: 15, lineHeight: 1.45 }}>
-          Everything lives in this browser on this phone ({kb} KB used of roughly 5 MB). Clearing the browser's site data deletes it, so export a backup now and then.
+          {settings.syncPassphrase
+            ? <>A copy lives on this phone ({kb} KB used of roughly 5 MB) and in your Neon database, so clearing the browser won't lose anything once it has synced.</>
+            : <>Everything lives in this browser on this phone ({kb} KB used of roughly 5 MB). Clearing the browser's site data deletes it, so export a backup now and then, or turn on Sync above.</>}
         </span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
           <button className="btn btn-ink" onClick={exportBackup} disabled={!recipes.length}><Icon name="download" size={18} stroke={2.4} /> Export</button>
@@ -202,7 +209,9 @@ export default function Settings() {
           }}>Remove sample recipes</button>
         )}
         <button className="btn btn-ink" disabled={!recipes.length} style={{ color: 'var(--label)', borderColor: 'var(--label)' }} onClick={() => {
-          if (!confirm(`Delete all ${recipes.length} recipes from this phone? This can't be undone unless you have a backup.`)) return;
+          if (!confirm(settings.syncPassphrase
+            ? `Delete all ${recipes.length} recipes? Sync is on, so they'll be deleted on every connected phone too. This can't be undone unless you have a backup.`
+            : `Delete all ${recipes.length} recipes from this phone? This can't be undone unless you have a backup.`)) return;
           update((d) => ({ ...d, recipes: [] }));
           toast('All recipes deleted');
         }}><Icon name="trash" size={18} stroke={2} /> Delete all recipes</button>
@@ -210,5 +219,73 @@ export default function Settings() {
 
       <p className="muted" style={{ textAlign: 'center', fontSize: 13, margin: 0 }}>Cauldron &amp; Quill · v1.0</p>
     </main>
+  );
+}
+
+function ago(ts: number | null): string {
+  if (!ts) return '';
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 45) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function SyncSettings() {
+  const { settings, sync } = useData();
+  const status = useSyncStatus();
+  const [pass, setPass] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const on = !!settings.syncPassphrase;
+
+  if (!on) {
+    return (
+      <>
+        <span className="muted" style={{ marginTop: -6, fontSize: 15, lineHeight: 1.45 }}>
+          Keep your recipes in your own Neon database, so they survive a cleared browser and show up on every phone you connect.
+        </span>
+        <label className="field">
+          <span className="label">Passphrase</span>
+          <input className="input" type="password" autoComplete="current-password" value={pass}
+            onChange={(e) => { setPass(e.target.value); setError(''); }} placeholder="The APP_PASSPHRASE you set on Vercel" style={{ fontSize: 16 }} />
+        </label>
+        {error && <div className="error-box" role="alert">{error}</div>}
+        <button className="btn btn-primary" disabled={!pass.trim() || busy} onClick={async () => {
+          setBusy(true);
+          setError('');
+          try {
+            await connect(pass);
+            setPass('');
+            toast('Sync is on');
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}>{busy ? 'Connecting…' : 'Connect'}</button>
+      </>
+    );
+  }
+
+  const pending = sync.dirty.length + sync.deleted.length;
+  return (
+    <>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800 }}>
+        {status.phase === 'syncing' ? 'Syncing…'
+          : status.phase === 'error' ? 'Sync paused'
+          : status.at ? `Synced ${ago(status.at)}` : 'Sync is on'}
+        {pending > 0 && status.phase !== 'syncing' && <span className="muted" style={{ fontWeight: 700 }}>· {pending} waiting</span>}
+      </span>
+      {status.phase === 'error' && <div className="error-box" role="alert">{status.message}</div>}
+      <span className="muted" style={{ fontSize: 14, lineHeight: 1.45 }}>
+        Changes sync on their own when you open the app and a few seconds after each edit. Deleting a recipe deletes it on every connected phone.
+      </span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
+        <button className="btn btn-ink" disabled={status.phase === 'syncing'} onClick={() => void syncNow()}>Sync now</button>
+        <button className="btn btn-ink" onClick={() => {
+          if (confirm('Turn sync off on this phone? Your recipes stay here and in the database.')) disconnect();
+        }}>Disconnect</button>
+      </div>
+    </>
   );
 }
