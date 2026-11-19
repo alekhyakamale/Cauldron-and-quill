@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { dateKey, findDay, totals } from '../log';
 import { lastCookedLabel } from '../parse';
 import { isHot, isPixelThumb } from '../recipes';
 import { sampleRecipes } from '../samples';
@@ -88,8 +89,10 @@ function cuisinesOf(recipes: Recipe[]): { name: string; count: number }[] {
 }
 
 export default function Shelf() {
-  const { recipes, settings } = useData();
+  const { recipes, settings, days } = useData();
   const syncStatus = useSyncStatus();
+  const todayEntries = findDay(days, dateKey())?.entries ?? [];
+  const todayTotals = totals(todayEntries, recipes);
   const saved = useMemo(() => {
     try {
       return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') as { f: Filters; q: string } | null;
@@ -144,10 +147,22 @@ export default function Shelf() {
             {recipes.length} {recipes.length === 1 ? 'recipe' : 'recipes'} on the shelf
           </span>
         </div>
+        <a className="icon-btn" href="#/today" aria-label="Today's food log">
+          <Icon name="log" size={22} stroke={2} />
+        </a>
         <a className="icon-btn" href="#/settings" aria-label="Settings">
           <Icon name="sliders" size={22} stroke={2} />
         </a>
       </header>
+
+      {todayEntries.length > 0 && (
+        <a href="#/today" className="today-bar">
+          <Icon name="log" size={18} stroke={2.2} />
+          <span style={{ flex: 1 }}>Today: {todayEntries.length} {todayEntries.length === 1 ? 'item' : 'items'}</span>
+          <span>{Math.round(todayTotals.kcal).toLocaleString('en-IN')} kcal · P {Math.round(todayTotals.protein)} g</span>
+          <Icon name="next" size={16} stroke={2.6} />
+        </a>
+      )}
 
       {settings.syncPassphrase && syncStatus.phase === 'error' && (
         <a href="#/settings" className="error-box" style={{ textDecoration: 'none', fontSize: 14 }}>

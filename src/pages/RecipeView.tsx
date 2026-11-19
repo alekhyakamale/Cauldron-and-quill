@@ -1,18 +1,21 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { scaledAmount } from '../parse';
 import { estimateInBackground, isPixelThumb } from '../recipes';
+import { addEntry, dateKey, findDay, scale, slotForNow } from '../log';
 import { deleteRecipe, patchRecipe, useData } from '../store';
 import type { Ingredient } from '../types';
 import { Icon, Sparkle, go, toast } from '../ui';
 import AskAnyAI from './AskAnyAI';
+import LogSheet from './LogSheet';
 import ThumbSheet from './ThumbSheet';
 
 export default function RecipeView({ id }: { id: string }) {
-  const { recipes, settings } = useData();
+  const { recipes, settings, days } = useData();
   const r = recipes.find((x) => x.id === id);
   const [serves, setServes] = useState(r?.serves ?? 4);
   const [done, setDone] = useState<Record<number, boolean>>({});
   const [thumbOpen, setThumbOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
 
   useEffect(() => {
     if (r) setServes(r.serves);
@@ -97,6 +100,8 @@ export default function RecipeView({ id }: { id: string }) {
         </a>
       )}
 
+      <AteToday />
+
       {r.ingredients.length > 0 && (
         <section className="paper" style={{ padding: '18px 18px 8px', display: 'flex', flexDirection: 'column' }}>
           <h2 className="display" style={{ margin: 0, fontSize: 26 }}>Ingredients</h2>
@@ -150,6 +155,28 @@ export default function RecipeView({ id }: { id: string }) {
         </section>
       )}
 
+      {logOpen && (
+        <LogSheet
+          heading="Ate this today"
+          sub={r.title}
+          saveLabel="Add to today"
+          initial={{ title: r.title, servings: 1, slot: slotForNow() }}
+          current={r.nutrition}
+          recipeEstimate={r.nutrition}
+          onClose={() => setLogOpen(false)}
+          onSave={(v) => {
+            try {
+              addEntry(dateKey(), { recipeId: r.id, title: r.title, servings: v.servings, slot: v.slot, per: v.edited ? v.per : r.nutrition, edited: v.edited });
+              setLogOpen(false);
+              const n = v.edited ? v.per : r.nutrition;
+              toast(n ? `Added to today · ${Math.round(scale(n, v.servings).kcal)} kcal` : 'Added to today');
+            } catch (e) {
+              toast((e as Error).message);
+            }
+          }}
+        />
+      )}
+
       {thumbOpen && (
         <ThumbSheet
           recipe={{ id: r.id, title: r.title, ingredientsText: r.ingredientsText, cuisine: r.cuisine }}
@@ -166,6 +193,24 @@ export default function RecipeView({ id }: { id: string }) {
       )}
     </main>
   );
+
+  function AteToday() {
+    if (!r) return null;
+    const today = findDay(days, dateKey())?.entries.filter((e) => e.recipeId === r.id) ?? [];
+    const had = today.reduce((sum, e) => sum + e.servings, 0);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button className="btn btn-dark btn-block" onClick={() => setLogOpen(true)}>
+          <Icon name="log" size={19} stroke={2.2} /> {had ? 'Log another serving' : 'Ate this today'}
+        </button>
+        {had > 0 && (
+          <a href="#/today" className="muted" style={{ fontSize: 13, fontWeight: 700, textAlign: 'center' }}>
+            Logged today · see the day's totals
+          </a>
+        )}
+      </div>
+    );
+  }
 
   function Nutrition() {
     if (!r) return null;

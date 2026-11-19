@@ -4,7 +4,7 @@ import { sampleRecipes } from '../samples';
 import { setSettings, storageBytes, update, useData } from '../store';
 import { connect, disconnect, syncNow, useSyncStatus } from '../sync';
 import { activeSeason, PALETTES } from '../theme';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_TEXT_MODEL, type PixelSize, type Recipe, type Season } from '../types';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_TEXT_MODEL, type DayLog, type PixelSize, type Recipe, type Season } from '../types';
 import { Icon, Seg, toast } from '../ui';
 
 const SEASONS: Season[] = ['Autumn', 'Winter', 'Spring', 'Summer'];
@@ -37,7 +37,7 @@ function safeSet(patch: Parameters<typeof setSettings>[0]) {
 }
 
 export default function Settings() {
-  const { settings, recipes } = useData();
+  const { settings, recipes, days } = useData();
   const [showKey, setShowKey] = useState(false);
   const [keyStatus, setKeyStatus] = useState<{ kind: 'idle' | 'testing' | 'ok' | 'error'; msg?: string }>({ kind: 'idle' });
   const importRef = useRef<HTMLInputElement>(null);
@@ -61,6 +61,7 @@ export default function Settings() {
       version: 1,
       exportedAt: new Date().toISOString(),
       recipes,
+      days,
       settings: { ...settings, apiKey: '', syncPassphrase: '' },
     };
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -83,9 +84,15 @@ export default function Settings() {
         return;
       }
       if (!confirm(`Add ${incoming.length} recipes from this backup? Any recipe that's in both will be replaced by the backup's version.`)) return;
+      const incomingDays: DayLog[] = Array.isArray(json?.days) ? json.days.filter((x: DayLog) => x && typeof x.id === 'string' && Array.isArray(x.entries)) : [];
       update((d) => {
         const ids = new Set(incoming.map((r) => r.id));
-        return { ...d, recipes: [...incoming, ...d.recipes.filter((r) => !ids.has(r.id))] };
+        const dayIds = new Set(incomingDays.map((x) => x.id));
+        return {
+          ...d,
+          recipes: [...incoming, ...d.recipes.filter((r) => !ids.has(r.id))],
+          days: [...incomingDays, ...d.days.filter((x) => !dayIds.has(x.id))],
+        };
       });
       toast(`Restored ${incoming.length} recipes`);
     } catch (e) {

@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from 'react';
-import { DEFAULT_SETTINGS, type Recipe, type Settings } from './types';
+import { DEFAULT_SETTINGS, type DayLog, type Recipe, type Settings } from './types';
 
 const KEY = 'cauldron-and-quill/v1';
 
 export interface SyncState {
-  /** Recipes changed on this phone since the last successful sync */
+  /** Recipes and day logs changed on this phone since the last successful sync */
   dirty: string[];
   /** Recipes deleted on this phone since the last successful sync */
   deleted: { id: string; at: number }[];
@@ -14,6 +14,8 @@ export interface SyncState {
 
 export interface Data {
   recipes: Recipe[];
+  /** Food log, one entry per day that has anything logged */
+  days: DayLog[];
   settings: Settings;
   sync: SyncState;
 }
@@ -27,6 +29,7 @@ function load(): Data {
       const parsed = JSON.parse(raw) as Partial<Data>;
       return {
         recipes: Array.isArray(parsed.recipes) ? parsed.recipes : [],
+        days: Array.isArray(parsed.days) ? parsed.days : [],
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
         sync: { ...NO_SYNC, ...(parsed.sync || {}) },
       };
@@ -34,7 +37,7 @@ function load(): Data {
   } catch {
     // fall through to a fresh start
   }
-  return { recipes: [], settings: { ...DEFAULT_SETTINGS }, sync: { ...NO_SYNC } };
+  return { recipes: [], days: [], settings: { ...DEFAULT_SETTINGS }, sync: { ...NO_SYNC } };
 }
 
 let data: Data = load();
@@ -50,26 +53,33 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-/** Notes which recipes were added, edited or deleted so the next sync knows what to send. */
+/** Notes which recipes and days were added, edited or deleted so the next sync knows what to send. */
 function track(prev: Data, next: Data): Data {
-  if (prev.recipes === next.recipes) return next;
-  const before = new Map(prev.recipes.map((r) => [r.id, r]));
+  if (prev.recipes === next.recipes && prev.days === next.days) return next;
   const now = Date.now();
   const dirty = new Set(next.sync.dirty);
-  const recipes = next.recipes.map((r) => {
-    if (before.get(r.id) === r) return r;
-    dirty.add(r.id);
-    return { ...r, changedAt: now };
-  });
-  const stillHere = new Set(recipes.map((r) => r.id));
-  const deleted = next.sync.deleted.filter((d) => !stillHere.has(d.id));
-  for (const id of before.keys()) {
-    if (!stillHere.has(id)) {
-      dirty.delete(id);
-      deleted.push({ id, at: now });
+  let deleted = next.sync.deleted;
+  const mark = <T extends { id: string; changedAt?: number }>(before: T[], after: T[]): T[] => {
+    if (before === after) return after;
+    const old = new Map(before.map((x) => [x.id, x]));
+    const out = after.map((x) => {
+      if (old.get(x.id) === x) return x;
+      dirty.add(x.id);
+      return { ...x, changedAt: now };
+    });
+    const stillHere = new Set(out.map((x) => x.id));
+    deleted = deleted.filter((d) => !stillHere.has(d.id));
+    for (const id of old.keys()) {
+      if (!stillHere.has(id)) {
+        dirty.delete(id);
+        deleted = [...deleted, { id, at: now }];
+      }
     }
-  }
-  return { ...next, recipes, sync: { ...next.sync, dirty: [...dirty], deleted } };
+    return out;
+  };
+  const recipes = mark(prev.recipes, next.recipes);
+  const days = mark(prev.days, next.days);
+  return { ...next, recipes, days, sync: { ...next.sync, dirty: [...dirty], deleted } };
 }
 
 function save(next: Data): void {

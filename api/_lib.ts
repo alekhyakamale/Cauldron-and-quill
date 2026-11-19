@@ -15,6 +15,8 @@ export interface DeleteIn {
 }
 export interface SyncRequest {
   since: number;
+  /** Newer apps also sync food logs (ids starting "day:"); older ones don't know about them */
+  withDays?: boolean;
   upserts?: RecipeIn[];
   deletes?: DeleteIn[];
 }
@@ -75,6 +77,7 @@ export function validate(body: unknown): SyncRequest | string {
   }
   return {
     since,
+    withDays: b.withDays === true,
     upserts: upserts.map((u) => ({ id: u.id, changedAt: Math.round(Number(u.changedAt)), data: u.data })),
     deletes: deletes.map((d) => ({ id: d.id, at: Math.round(Number(d.at)) })),
   };
@@ -120,8 +123,10 @@ export async function sync(query: Query, req: SyncRequest, now = Date.now()): Pr
   // The 5 s overlap covers writes landing in the same millisecond or from a server whose clock is
   // slightly behind; repeats are harmless because the phone only applies changes newer than its own.
   const rows = await query(
-    'select id, data, changed_at, deleted from recipes where synced_at > $1 order by synced_at',
-    [Math.max(0, req.since - OVERLAP_MS)],
+    `select id, data, changed_at, deleted from recipes
+     where synced_at > $1 and ($2::boolean or id not like 'day:%')
+     order by synced_at`,
+    [Math.max(0, req.since - OVERLAP_MS), req.withDays === true],
   );
   const changes = rows
     .filter((r) => !accepted.has(String(r.id)))

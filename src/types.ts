@@ -52,6 +52,32 @@ export interface Recipe {
   changedAt?: number;
 }
 
+export const SLOTS = ['Breakfast', 'Lunch', 'Snack', 'Dinner'] as const;
+export type Slot = (typeof SLOTS)[number];
+
+/** One thing eaten on a day: a recipe from the shelf or something typed in */
+export interface LogEntry {
+  id: string;
+  /** The shelf recipe this came from; null for things added by hand */
+  recipeId: string | null;
+  title: string;
+  servings: number;
+  slot: Slot;
+  /** Nutrition for ONE serving. Null means "use the recipe's current estimate" (it may arrive later). */
+  per: Nutrition | null;
+  /** True once the numbers were adjusted by hand, so they no longer follow the recipe */
+  edited?: boolean;
+  at: number;
+}
+
+/** Everything eaten on one calendar day. Synced like a recipe, with id "day:YYYY-MM-DD". */
+export interface DayLog {
+  id: string;
+  date: string;
+  entries: LogEntry[];
+  changedAt?: number;
+}
+
 export type Season = 'Autumn' | 'Winter' | 'Spring' | 'Summer';
 export type PixelSize = 'Chunky' | 'Classic' | 'Fine';
 

@@ -25,6 +25,8 @@ const PATHS: Record<string, ReactNode> = {
   trash: (<><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>),
   download: (<><path d="M12 4v12M7 11l5 5 5-5" /><path d="M4 20h16" /></>),
   external: <path d="M7 17L17 7M9 7h8v8" />,
+  copy: (<><rect x="8" y="8" width="12" height="12" /><path d="M16 8V4H4v12h4" /></>),
+  log: (<><rect x="4" y="5" width="16" height="16" /><path d="M4 10h16M8 3v4M16 3v4M8 14h3M8 17h6" /></>),
   eye: (<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>),
 };
 
@@ -121,7 +123,7 @@ export function Toaster() {
   ) : null;
 }
 
-/** Tiny hash router: #/, #/r/:id, #/edit/:id, #/new, #/cook/:id, #/snap, #/settings */
+/** Tiny hash router: #/, #/r/:id, #/edit/:id, #/new, #/cook/:id, #/snap, #/settings, #/today[/:date] */
 export function useRoute(): string[] {
   const read = () => (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
   const [route, setRoute] = useState(read);

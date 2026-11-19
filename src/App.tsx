@@ -5,6 +5,8 @@ import RecipeView from './pages/RecipeView';
 import Settings from './pages/Settings';
 import Shelf from './pages/Shelf';
 import Snap from './pages/Snap';
+import Today from './pages/Today';
+import { dateKey, isDateKey } from './log';
 import { resumePendingEstimates } from './recipes';
 import { startAutoSync } from './sync';
 import { useData } from './store';
@@ -37,6 +39,11 @@ export default function App() {
     case 'snap':
       page = <Snap />;
       break;
+    case 'today': {
+      const date = isDateKey(route[1]) ? route[1] : dateKey();
+      page = <Today key={date} date={date} />;
+      break;
+    }
     case 'settings':
       page = <Settings />;
       break;

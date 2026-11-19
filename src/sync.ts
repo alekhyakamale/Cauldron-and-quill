@@ -1,6 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import { applyRemote, getData, setSettings, subscribe, type Data } from './store';
-import type { Recipe } from './types';
+import type { DayLog, Recipe } from './types';
+
+type Item = Recipe | DayLog;
+const isDay = (id: string) => id.startsWith('day:');
 
 interface Change {
   id: string;
@@ -41,7 +44,7 @@ class SyncError extends Error {}
 /** Stays under Vercel's 4.5 MB request limit even with photo thumbnails */
 const MAX_BATCH_CHARS = 3_000_000;
 
-const changedAt = (r: Recipe) => r.changedAt ?? r.updatedAt;
+const changedAt = (x: Item) => x.changedAt ?? ('updatedAt' in x ? x.updatedAt : 0);
 
 async function post(passphrase: string, body: object): Promise<SyncResponse> {
   let res: Response;
@@ -63,9 +66,9 @@ async function post(passphrase: string, body: object): Promise<SyncResponse> {
   return json as SyncResponse;
 }
 
-function batches(recipes: Recipe[]): Recipe[][] {
-  const out: Recipe[][] = [];
-  let cur: Recipe[] = [];
+function batches(recipes: Item[]): Item[][] {
+  const out: Item[][] = [];
+  let cur: Item[] = [];
   let size = 0;
   for (const r of recipes) {
     const n = JSON.stringify(r).length;
@@ -83,29 +86,37 @@ function batches(recipes: Recipe[]): Recipe[][] {
 
 /** Folds the server's changes into this phone's data; the newest edit of each recipe wins. */
 function merge(d: Data, changes: Change[], sent: Map<string, number>, sentDeletes: { id: string; at: number }[], serverTime: number): Data {
-  const byId = new Map(d.recipes.map((r) => [r.id, r]));
+  const recipes = new Map(d.recipes.map((r) => [r.id, r as Item]));
+  const days = new Map(d.days.map((x) => [x.id, x as Item]));
+  const pick = (id: string) => (isDay(id) ? days : recipes);
   const dirty = new Set(d.sync.dirty);
   for (const [id, at] of sent) {
-    const cur = byId.get(id);
+    const cur = pick(id).get(id);
     if (cur && changedAt(cur) === at) dirty.delete(id); // unchanged since we sent it
   }
   const latest = new Map<string, Change>();
   for (const c of changes) latest.set(c.id, c);
   for (const c of latest.values()) {
     if (!c.deleted && sent.get(c.id) === c.changedAt) continue; // our own edit coming back
-    const local = byId.get(c.id);
+    const map = pick(c.id);
+    const local = map.get(c.id);
     const localAt = local ? changedAt(local) : -1;
     if (local && localAt > c.changedAt) continue; // our newer edit wins; it stays queued
     if (c.deleted) {
-      byId.delete(c.id);
+      map.delete(c.id);
       dirty.delete(c.id);
     } else if (c.data && typeof c.data === 'object') {
-      byId.set(c.id, { ...(c.data as Recipe), changedAt: c.changedAt });
+      map.set(c.id, { ...(c.data as Item), changedAt: c.changedAt });
       dirty.delete(c.id);
     }
   }
   const deleted = d.sync.deleted.filter((x) => !sentDeletes.some((s) => s.id === x.id && s.at === x.at));
-  return { ...d, recipes: [...byId.values()], sync: { dirty: [...dirty], deleted, lastSyncAt: serverTime } };
+  return {
+    ...d,
+    recipes: [...recipes.values()] as Recipe[],
+    days: [...days.values()] as DayLog[],
+    sync: { dirty: [...dirty], deleted, lastSyncAt: serverTime },
+  };
 }
 
 async function run(): Promise<void> {
@@ -119,8 +130,9 @@ async function run(): Promise<void> {
   try {
     const since = start.sync.lastSyncAt;
     // First sync from this phone sends everything so both sides end up with the full shelf
-    const ids = new Set(since === 0 ? start.recipes.map((r) => r.id) : start.sync.dirty);
-    const toSend = start.recipes.filter((r) => ids.has(r.id));
+    const all: Item[] = [...start.recipes, ...start.days];
+    const ids = new Set(since === 0 ? all.map((x) => x.id) : start.sync.dirty);
+    const toSend = all.filter((x) => ids.has(x.id));
     const deletes = start.sync.deleted;
     const groups = batches(toSend);
     if (!groups.length) groups.push([]);
@@ -129,6 +141,7 @@ async function run(): Promise<void> {
     for (let i = 0; i < groups.length; i++) {
       const res = await post(pass, {
         since,
+        withDays: true, // older app versions leave this out, so they never receive food logs
         upserts: groups[i].map((r) => ({ id: r.id, changedAt: changedAt(r), data: r })),
         deletes: i === 0 ? deletes : [],
       });

@@ -49,6 +49,13 @@ On iPhone, the home-screen app and Safari keep separate storage, so add recipes 
 - Your Gemini key and sync passphrase are never included in exported backups.
 - With Sync on, every recipe is also kept in your Neon Postgres database (see below).
 
+## Food log
+
+- On any recipe, **Ate this today** logs it with servings (½ steps, or type any amount) and a meal slot. **Adjust numbers** overrides the estimate for that one entry.
+- The calendar icon on the shelf opens the day: totals for calories, protein, fiber, carbs and fat, per meal, with arrows to earlier days. **Something else** adds food that isn't a recipe.
+- **Copy for AI or notes** copies a plain-text summary of the day.
+- Days sync like recipes, stored as rows with ids `day:YYYY-MM-DD`. App versions from before the food log never receive them.
+
 ## Sync with Neon
 
 One serverless function, `api/sync.ts`, stores recipes in a single `recipes` table, which it creates on first use. Phones keep working offline and sync when they open, a few seconds after each edit, and when they come back online. If two phones edit the same recipe, the most recent edit wins. Deleting a recipe deletes it everywhere.
@@ -72,12 +79,13 @@ Neon's free plan scales to zero when idle and wakes on the next request (a secon
 ## Code map
 
 - `src/store.ts`: local-storage store (`useSyncExternalStore`), tracks which recipes changed
+- `src/log.ts`: food log helpers (dates, totals, copy text)
 - `src/sync.ts`: phone side of sync (batching, merging, auto-sync)
 - `api/sync.ts`, `api/_lib.ts`: the sync endpoint and its Postgres queries
 - `src/parse.ts`: ingredient amounts, scaling, timers in steps
 - `src/gemini.ts`: Gemini REST calls (structured JSON + image generation), retries and fallbacks
 - `src/pixel.ts`: cropping, pixelation and colour quantisation on a canvas
 - `src/theme.ts`: seasonal palettes
-- `src/pages/`: Shelf (with filters), RecipeView, Editor, ThumbSheet, CookMode, Snap, Settings
+- `src/pages/`: Shelf (with filters), RecipeView, Today, LogSheet, Editor, ThumbSheet, CookMode, Snap, Settings
 - `public/sw.js`: offline support
 - `scripts/ship.mjs`: build, commit and push in one go
