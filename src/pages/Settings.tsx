@@ -1,7 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { GeminiError, testKey } from '../gemini';
 import { sampleRecipes } from '../samples';
-import { setSettings, storageBytes, update, useData } from '../store';
+import { setSettings, storageUse, update, useData } from '../store';
 import { connect, disconnect, syncNow, useSyncStatus } from '../sync';
 import { activeSeason, PALETTES } from '../theme';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_TEXT_MODEL, type DayLog, type PixelSize, type Recipe, type Season } from '../types';
@@ -42,7 +42,12 @@ export default function Settings() {
   const [keyStatus, setKeyStatus] = useState<{ kind: 'idle' | 'testing' | 'ok' | 'error'; msg?: string }>({ kind: 'idle' });
   const importRef = useRef<HTMLInputElement>(null);
   const current = activeSeason(settings);
-  const kb = Math.round(storageBytes() / 1024);
+  const [use, setUse] = useState<{ used: number; quota: number | null } | null>(null);
+  useEffect(() => {
+    void storageUse().then(setUse);
+  }, [recipes]);
+  const mb = (b: number) => (b >= 1024 * 1024 * 1024 ? `${(b / 1024 ** 3).toFixed(1)} GB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+  const usedText = use ? `${mb(use.used)} used${use.quota ? ` of about ${mb(use.quota)}` : ''}` : 'checking space';
   const samplesHere = recipes.filter((r) => r.sample).length;
 
   const test = async () => {
@@ -193,8 +198,8 @@ export default function Settings() {
       <Section title="Your recipes">
         <span className="muted" style={{ marginTop: -6, fontSize: 15, lineHeight: 1.45 }}>
           {settings.syncPassphrase
-            ? <>A copy lives on this phone ({kb} KB used of roughly 5 MB) and in your Neon database, so clearing the browser won't lose anything once it has synced.</>
-            : <>Everything lives in this browser on this phone ({kb} KB used of roughly 5 MB). Clearing the browser's site data deletes it, so export a backup now and then, or turn on Sync above.</>}
+            ? <>A copy lives on this phone ({usedText}) and in your Neon database, so clearing the browser won't lose anything once it has synced.</>
+            : <>Everything lives in this browser on this phone ({usedText}). Clearing the browser's site data deletes it, so export a backup now and then, or turn on Sync above.</>}
         </span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
           <button className="btn btn-ink" onClick={exportBackup} disabled={!recipes.length}><Icon name="download" size={18} stroke={2.4} /> Export</button>

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { idbGet, idbGetPrefix, idbWrite } from './idb';
 import { DEFAULT_SETTINGS, type DayLog, type Recipe, type Settings } from './types';
 
 const KEY = 'cauldron-and-quill/v1';
@@ -22,30 +23,95 @@ export interface Data {
 
 const NO_SYNC: SyncState = { dirty: [], deleted: [], lastSyncAt: 0 };
 
-function load(): Data {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Data>;
-      return {
-        recipes: Array.isArray(parsed.recipes) ? parsed.recipes : [],
-        days: Array.isArray(parsed.days) ? parsed.days : [],
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
-        sync: { ...NO_SYNC, ...(parsed.sync || {}) },
-      };
-    }
-  } catch {
-    // fall through to a fresh start
-  }
-  return { recipes: [], days: [], settings: { ...DEFAULT_SETTINGS }, sync: { ...NO_SYNC } };
+const empty = (): Data => ({ recipes: [], days: [], settings: { ...DEFAULT_SETTINGS }, sync: { ...NO_SYNC } });
+
+function normalize(parsed: Partial<Data> | null | undefined): Data {
+  if (!parsed || typeof parsed !== 'object') return empty();
+  return {
+    recipes: Array.isArray(parsed.recipes) ? parsed.recipes : [],
+    days: Array.isArray(parsed.days) ? parsed.days : [],
+    settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+    sync: { ...NO_SYNC, ...(parsed.sync || {}) },
+  };
 }
 
-let data: Data = load();
+function readLocalStorage(): Partial<Data> | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? (JSON.parse(raw) as Partial<Data>) : null;
+  } catch {
+    return null;
+  }
+}
+
+let data: Data = empty();
 const listeners = new Set<() => void>();
+/** IndexedDB when it works; localStorage (about 5 MB) only on browsers that refuse it */
+let backend: 'idb' | 'local' = 'idb';
+
+// In IndexedDB each recipe is its own entry ("r:<id>"), so saving one recipe writes only that
+// recipe. Everything else (settings, food log, sync state, recipe order) is one small "meta" entry.
+const META = 'meta';
+const rkey = (id: string) => `r:${id}`;
+type Meta = Omit<Data, 'recipes'> & { order: string[] };
+const metaOf = (d: Data): Meta => ({ days: d.days, settings: d.settings, sync: d.sync, order: d.recipes.map((r) => r.id) });
+
+async function readIdb(): Promise<Data | null> {
+  const meta = await idbGet<Meta>(META);
+  if (!meta) return null;
+  const all = await idbGetPrefix<Recipe>('r:');
+  const byId = new Map(all.map((r) => [r.id, r]));
+  const ordered = meta.order.map((id) => byId.get(id)).filter((r): r is Recipe => !!r);
+  const seen = new Set(meta.order);
+  return normalize({ ...meta, recipes: [...ordered, ...all.filter((r) => !seen.has(r.id))] });
+}
+
+/** What's known to be on disk, to work out what the next save needs to write */
+let saved: Data | null = null;
+
+/**
+ * Loads saved data before the first render. The first time it runs after the move to IndexedDB,
+ * it copies everything over from localStorage and then frees that space.
+ */
+export async function initStore(): Promise<void> {
+  try {
+    const fromIdb = await readIdb();
+    if (fromIdb) {
+      data = saved = fromIdb;
+      return;
+    }
+    const old = readLocalStorage();
+    data = normalize(old);
+    if (old) {
+      await idbWrite([[META, metaOf(data)], ...data.recipes.map((r): [string, unknown] => [rkey(r.id), r])]);
+      saved = data;
+      try {
+        localStorage.removeItem(KEY);
+      } catch {
+        // already moved; nothing else to free
+      }
+    }
+  } catch {
+    backend = 'local';
+    data = normalize(readLocalStorage());
+  }
+}
+
+/** Only the recipes that changed, plus the small meta entry */
+async function writeChanges(next: Data): Promise<void> {
+  const before = new Map((saved?.recipes ?? []).map((r) => [r.id, r]));
+  const puts: [string, unknown][] = [[META, metaOf(next)]];
+  for (const r of next.recipes) {
+    if (before.get(r.id) !== r) puts.push([rkey(r.id), r]);
+    before.delete(r.id);
+  }
+  await idbWrite(puts, [...before.keys()].map(rkey));
+  saved = next;
+}
 
 export class StorageFullError extends Error {
   constructor() {
-    super("Your phone's storage for this app is full. Try removing a few photo thumbnails or export a backup and clear old recipes.");
+    super("Couldn't save on this phone: its storage is full. Free some space on the phone, or export a backup.");
   }
 }
 
@@ -82,18 +148,39 @@ function track(prev: Data, next: Data): Data {
   return { ...next, recipes, days, sync: { ...next.sync, dirty: [...dirty], deleted } };
 }
 
-function save(next: Data): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch (e) {
-    if (e instanceof DOMException) throw new StorageFullError();
-    throw e;
+let writing = false;
+let queued = false;
+
+/** Writes the latest data in the background, one write at a time, skipping ones already outdated */
+async function persist(): Promise<void> {
+  if (writing) {
+    queued = true;
+    return;
   }
-  data = next;
-  emit();
+  writing = true;
+  try {
+    do {
+      queued = false;
+      const snapshot = data;
+      if (backend === 'idb') await writeChanges(snapshot);
+      else localStorage.setItem(KEY, JSON.stringify(snapshot));
+    } while (queued);
+    channel?.postMessage('saved');
+  } catch (e) {
+    console.error('Saving failed', e);
+    window.dispatchEvent(new CustomEvent('cq-save-failed', { detail: new StorageFullError().message }));
+  } finally {
+    writing = false;
+  }
 }
 
-/** Applies a change and saves it to local storage. Throws StorageFullError if the browser refuses. */
+function save(next: Data): void {
+  data = next;
+  emit();
+  void persist();
+}
+
+/** Applies a change and saves it on this phone in the background. If saving fails, a 'cq-save-failed' event fires. */
 export function update(fn: (d: Data) => Data): void {
   save(track(data, fn(data)));
 }
@@ -148,21 +235,39 @@ export function replaceAll(next: Data): void {
   update((d) => ({ ...d, recipes: next.recipes, settings: { ...DEFAULT_SETTINGS, ...next.settings } }));
 }
 
-export function storageBytes(): number {
-  try {
-    return (localStorage.getItem(KEY) || '').length * 2;
-  } catch {
-    return 0;
+/** Bytes this app is using on the phone, and how much the browser allows */
+export async function storageUse(): Promise<{ used: number; quota: number | null }> {
+  if (backend === 'local') {
+    try {
+      return { used: (localStorage.getItem(KEY) || '').length * 2, quota: 5 * 1024 * 1024 };
+    } catch {
+      return { used: 0, quota: null };
+    }
   }
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.usage !== undefined) return { used: est.usage, quota: est.quota ?? null };
+  } catch {
+    // fall through to a rough count
+  }
+  return { used: JSON.stringify(data).length * 2, quota: null };
 }
 
 // Keep tabs in sync if the app is open twice
-window.addEventListener('storage', (e) => {
-  if (e.key === KEY) {
-    data = load();
-    emit();
-  }
-});
+const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('cauldron-and-quill');
+if (channel) {
+  channel.onmessage = async () => {
+    try {
+      const fresh = backend === 'idb' ? await readIdb() : normalize(readLocalStorage());
+      if (fresh) {
+        data = saved = fresh;
+        emit();
+      }
+    } catch {
+      // the other tab's change shows up on next launch
+    }
+  };
+}
 
 export function subscribe(listener: () => void): () => void {
   listeners.add(listener);

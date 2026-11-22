@@ -11,7 +11,7 @@ import { resumePendingEstimates } from './recipes';
 import { startAutoSync } from './sync';
 import { useData } from './store';
 import { activeSeason, applyPalette, PALETTES } from './theme';
-import { Toaster, useRoute } from './ui';
+import { Toaster, toast, useRoute } from './ui';
 
 export default function App() {
   const route = useRoute();
@@ -21,6 +21,11 @@ export default function App() {
   useEffect(() => applyPalette(PALETTES[season]), [season]);
   useEffect(() => resumePendingEstimates(), []);
   useEffect(() => startAutoSync(), []);
+  useEffect(() => {
+    const onFail = (e: Event) => toast((e as CustomEvent<string>).detail);
+    window.addEventListener('cq-save-failed', onFail);
+    return () => window.removeEventListener('cq-save-failed', onFail);
+  }, []);
 
   let page;
   switch (route[0]) {

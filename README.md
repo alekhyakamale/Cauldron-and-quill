@@ -1,6 +1,6 @@
 # Cauldron & Quill
 
-A cozy recipe book for your phone: pixel-art thumbnails from Gemini, filters for cuisine, calories and protein, a cook mode with timers, and snap-a-recipe-card. Everything is stored in your phone's browser (local storage). There is no server and no database.
+A cozy recipe book for your phone: pixel-art thumbnails from Gemini, filters for cuisine, calories and protein, a cook mode with timers, and snap-a-recipe-card. Everything is stored in your phone's browser (IndexedDB), with optional sync to your own Neon database.
 
 ## Shipping changes
 
@@ -44,7 +44,7 @@ On iPhone, the home-screen app and Safari keep separate storage, so add recipes 
 
 ## Where your data lives
 
-- Recipes, thumbnails and settings are saved in `localStorage` under `cauldron-and-quill/v1`, on that phone and in that browser.
+- Recipes, thumbnails, the food log and settings are saved in IndexedDB (database `cauldron-and-quill`), on that phone and in that browser. IndexedDB allows far more than the ~5 MB of localStorage, where older versions kept everything; that data is moved over automatically on first launch.
 - Clearing the browser's site data deletes everything. Use Settings › Your recipes › Export now and then to save a backup file, and Import to restore it (also how you move recipes to a new phone).
 - Your Gemini key and sync passphrase are never included in exported backups.
 - With Sync on, every recipe is also kept in your Neon Postgres database (see below).
@@ -78,7 +78,7 @@ Neon's free plan scales to zero when idle and wakes on the next request (a secon
 
 ## Code map
 
-- `src/store.ts`: local-storage store (`useSyncExternalStore`), tracks which recipes changed
+- `src/store.ts`: the app's data (`useSyncExternalStore`), saved to IndexedDB via `src/idb.ts`; tracks which recipes changed
 - `src/log.ts`: food log helpers (dates, totals, copy text)
 - `src/sync.ts`: phone side of sync (batching, merging, auto-sync)
 - `api/sync.ts`, `api/_lib.ts`: the sync endpoint and its Postgres queries
