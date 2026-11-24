@@ -275,8 +275,8 @@ export default function Shelf() {
 function RecipeCard({ r, showKcal }: { r: Recipe; showKcal: boolean }) {
   const hot = isHot(r) && !!r.thumb;
   const tags = [
-    r.nutrition && r.nutrition.protein >= 20 ? 'HIGH PROTEIN' : '',
-    r.nutrition?.fiber !== undefined && r.nutrition.fiber >= HIGH_FIBER ? 'HIGH FIBER' : '',
+    r.nutrition && r.nutrition.protein >= 20 ? 'P' : '',
+    r.nutrition?.fiber !== undefined && r.nutrition.fiber >= HIGH_FIBER ? 'F' : '',
   ].filter(Boolean);
   const meta = [r.timeText, showKcal && r.nutrition ? `${r.nutrition.kcal} kcal` : ''].filter(Boolean).join(' · ');
   return (
@@ -299,7 +299,11 @@ function RecipeCard({ r, showKcal }: { r: Recipe; showKcal: boolean }) {
         )}
         {tags.length > 0 && (
           <div className="tags">
-            {tags.map((t) => <span key={t} className="tag">{t}</span>)}
+            {tags.map((t) => (
+              <span key={t} className={`tag tag-${t === 'P' ? 'protein' : 'fiber'}`} title={t === 'P' ? 'High protein' : 'High fiber'} aria-label={t === 'P' ? 'High protein' : 'High fiber'}>
+                {t}++
+              </span>
+            ))}
           </div>
         )}
       </div>

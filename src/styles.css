@@ -174,11 +174,14 @@ textarea.input { line-height: 1.5; resize: vertical; }
 .card h3 { margin: 3px 0 0; font-size: 18px; line-height: 1.2; }
 .card .meta { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ink-muted); }
 .card .cooked { font-size: 12px; font-style: italic; color: var(--ink-muted); }
-.tags { position: absolute; top: 6px; left: 6px; right: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags { position: absolute; top: 5px; left: 5px; display: flex; gap: 3px; }
 .tag {
-  padding: 3px 6px; background: var(--accent2); color: var(--on-accent);
-  border: 2px solid var(--shadow); font-size: 11px; font-weight: 800; letter-spacing: 0.5px;
+  padding: 1px 4px; color: #FFF6E6; border: 2px solid #2A1A12;
+  font-size: 10px; font-weight: 900; line-height: 1.2; letter-spacing: 0.3px;
+  box-shadow: 1px 1px 0 #2A1A12;
 }
+.tag-protein { background: #A8323A; }
+.tag-fiber { background: #4E7A34; }
 .fab-row {
   position: fixed; z-index: 30; right: max(20px, calc(50vw - 260px)); bottom: calc(24px + env(safe-area-inset-bottom));
   display: flex; gap: 10px;
